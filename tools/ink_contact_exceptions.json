@@ -1,0 +1,452 @@
+{
+"02:34": {
+"gap": 0.0,
+"iou": 0.906,
+"fixed_gap": 1.6,
+"fixed_iou": 0.839
+},
+"02:54": {
+"gap": 0.0,
+"iou": 0.921,
+"fixed_gap": 1.6,
+"fixed_iou": 0.857
+},
+"03:24": {
+"gap": 0.0,
+"iou": 0.899,
+"fixed_gap": 1.8,
+"fixed_iou": 0.804
+},
+"03:34": {
+"gap": 0.0,
+"iou": 0.901,
+"fixed_gap": 1.8,
+"fixed_iou": 0.816
+},
+"03:54": {
+"gap": 0.0,
+"iou": 0.923,
+"fixed_gap": 2.0,
+"fixed_iou": 0.809
+},
+"04:21": {
+"gap": 0.0,
+"iou": 0.891,
+"fixed_gap": 1.8,
+"fixed_iou": 0.834
+},
+"04:24": {
+"gap": 0.0,
+"iou": 0.901,
+"fixed_gap": 1.6,
+"fixed_iou": 0.842
+},
+"04:31": {
+"gap": 0.0,
+"iou": 0.907,
+"fixed_gap": 2.0,
+"fixed_iou": 0.841
+},
+"04:34": {
+"gap": 0.0,
+"iou": 0.89,
+"fixed_gap": 1.8,
+"fixed_iou": 0.831
+},
+"04:51": {
+"gap": 0.0,
+"iou": 0.92,
+"fixed_gap": 2.0,
+"fixed_iou": 0.853
+},
+"05:24": {
+"gap": 0.0,
+"iou": 0.895,
+"fixed_gap": 1.8,
+"fixed_iou": 0.835
+},
+"05:34": {
+"gap": 0.0,
+"iou": 0.902,
+"fixed_gap": 1.6,
+"fixed_iou": 0.822
+},
+"05:54": {
+"gap": 0.0,
+"iou": 0.918,
+"fixed_gap": 1.8,
+"fixed_iou": 0.838
+},
+"06:24": {
+"gap": 0.0,
+"iou": 0.907,
+"fixed_gap": 1.6,
+"fixed_iou": 0.821
+},
+"06:34": {
+"gap": 0.0,
+"iou": 0.9,
+"fixed_gap": 1.6,
+"fixed_iou": 0.813
+},
+"07:05": {
+"gap": 0.0,
+"iou": 0.909,
+"fixed_gap": 1.6,
+"fixed_iou": 0.853
+},
+"07:15": {
+"gap": 0.2,
+"iou": 0.889,
+"fixed_gap": 1.7,
+"fixed_iou": 0.836
+},
+"07:21": {
+"gap": 0.0,
+"iou": 0.874,
+"fixed_gap": 1.7,
+"fixed_iou": 0.818
+},
+"07:26": {
+"gap": 0.0,
+"iou": 0.896,
+"fixed_gap": 1.61,
+"fixed_iou": 0.791
+},
+"07:32": {
+"gap": 0.6,
+"iou": 0.9,
+"fixed_gap": 1.61,
+"fixed_iou": 0.838
+},
+"08:24": {
+"gap": 0.0,
+"iou": 0.901,
+"fixed_gap": 1.8,
+"fixed_iou": 0.828
+},
+"08:34": {
+"gap": 0.0,
+"iou": 0.903,
+"fixed_gap": 1.8,
+"fixed_iou": 0.812
+},
+"08:54": {
+"gap": 0.0,
+"iou": 0.924,
+"fixed_gap": 2.2,
+"fixed_iou": 0.838
+},
+"09:24": {
+"gap": 0.0,
+"iou": 0.897,
+"fixed_gap": 1.8,
+"fixed_iou": 0.831
+},
+"09:34": {
+"gap": 0.0,
+"iou": 0.9,
+"fixed_gap": 1.6,
+"fixed_iou": 0.818
+},
+"09:54": {
+"gap": 0.0,
+"iou": 0.922,
+"fixed_gap": 2.0,
+"fixed_iou": 0.838
+},
+"11:11": {
+"gap": 0.0,
+"iou": 0.925,
+"fixed_gap": 1.6,
+"fixed_iou": 0.479
+},
+"11:15": {
+"gap": 0.0,
+"iou": 0.934,
+"fixed_gap": 1.6,
+"fixed_iou": 0.795
+},
+"11:17": {
+"gap": 0.0,
+"iou": 0.918,
+"fixed_gap": 1.6,
+"fixed_iou": 0.808
+},
+"11:18": {
+"gap": 0.6,
+"iou": 0.923,
+"fixed_gap": 1.6,
+"fixed_iou": 0.839
+},
+"11:23": {
+"gap": 0.0,
+"iou": 0.927,
+"fixed_gap": 1.6,
+"fixed_iou": 0.731
+},
+"11:24": {
+"gap": 0.0,
+"iou": 0.914,
+"fixed_gap": 1.6,
+"fixed_iou": 0.843
+},
+"11:26": {
+"gap": 0.0,
+"iou": 0.926,
+"fixed_gap": 1.6,
+"fixed_iou": 0.735
+},
+"11:29": {
+"gap": 0.6,
+"iou": 0.934,
+"fixed_gap": 1.6,
+"fixed_iou": 0.871
+},
+"11:32": {
+"gap": 0.6,
+"iou": 0.93,
+"fixed_gap": 1.6,
+"fixed_iou": 0.872
+},
+"11:39": {
+"gap": 0.0,
+"iou": 0.931,
+"fixed_gap": 1.6,
+"fixed_iou": 0.767
+},
+"11:42": {
+"gap": 0.0,
+"iou": 0.901,
+"fixed_gap": 1.6,
+"fixed_iou": 0.686
+},
+"11:46": {
+"gap": 0.0,
+"iou": 0.91,
+"fixed_gap": 1.6,
+"fixed_iou": 0.708
+},
+"11:49": {
+"gap": 0.0,
+"iou": 0.918,
+"fixed_gap": 1.6,
+"fixed_iou": 0.717
+},
+"11:50": {
+"gap": 0.0,
+"iou": 0.918,
+"fixed_gap": 1.6,
+"fixed_iou": 0.723
+},
+"11:55": {
+"gap": 0.6,
+"iou": 0.939,
+"fixed_gap": 1.6,
+"fixed_iou": 0.877
+},
+"11:57": {
+"gap": 0.4,
+"iou": 0.922,
+"fixed_gap": 1.6,
+"fixed_iou": 0.791
+},
+"12:24": {
+"gap": 0.0,
+"iou": 0.916,
+"fixed_gap": 1.6,
+"fixed_iou": 0.824
+},
+"12:34": {
+"gap": 0.0,
+"iou": 0.92,
+"fixed_gap": 1.8,
+"fixed_iou": 0.77
+},
+"12:54": {
+"gap": 0.0,
+"iou": 0.919,
+"fixed_gap": 2.0,
+"fixed_iou": 0.794
+},
+"13:24": {
+"gap": 0.0,
+"iou": 0.908,
+"fixed_gap": 1.8,
+"fixed_iou": 0.776
+},
+"13:34": {
+"gap": 0.0,
+"iou": 0.913,
+"fixed_gap": 1.6,
+"fixed_iou": 0.83
+},
+"13:44": {
+"gap": 0.4,
+"iou": 0.893,
+"fixed_gap": 1.61,
+"fixed_iou": 0.808
+},
+"13:54": {
+"gap": 0.0,
+"iou": 0.919,
+"fixed_gap": 2.2,
+"fixed_iou": 0.788
+},
+"14:44": {
+"gap": 0.0,
+"iou": 0.88,
+"fixed_gap": 1.6,
+"fixed_iou": 0.74
+},
+"14:54": {
+"gap": 0.0,
+"iou": 0.889,
+"fixed_gap": 1.6,
+"fixed_iou": 0.835
+},
+"15:24": {
+"gap": 0.0,
+"iou": 0.898,
+"fixed_gap": 1.6,
+"fixed_iou": 0.803
+},
+"15:34": {
+"gap": 0.0,
+"iou": 0.905,
+"fixed_gap": 1.6,
+"fixed_iou": 0.802
+},
+"16:24": {
+"gap": 0.0,
+"iou": 0.9,
+"fixed_gap": 1.6,
+"fixed_iou": 0.795
+},
+"16:34": {
+"gap": 0.0,
+"iou": 0.902,
+"fixed_gap": 1.6,
+"fixed_iou": 0.801
+},
+"16:47": {
+"gap": 0.0,
+"iou": 0.871,
+"fixed_gap": 1.6,
+"fixed_iou": 0.802
+},
+"16:54": {
+"gap": 0.0,
+"iou": 0.915,
+"fixed_gap": 1.6,
+"fixed_iou": 0.839
+},
+"17:00": {
+"gap": 0.8,
+"iou": 0.84,
+"fixed_gap": 1.6,
+"fixed_iou": 0.778
+},
+"17:12": {
+"gap": 0.0,
+"iou": 0.891,
+"fixed_gap": 1.6,
+"fixed_iou": 0.825
+},
+"17:14": {
+"gap": 0.2,
+"iou": 0.824,
+"fixed_gap": 1.6,
+"fixed_iou": 0.76
+},
+"17:38": {
+"gap": 0.0,
+"iou": 0.909,
+"fixed_gap": 1.6,
+"fixed_iou": 0.849
+},
+"18:24": {
+"gap": 0.0,
+"iou": 0.897,
+"fixed_gap": 1.8,
+"fixed_iou": 0.805
+},
+"18:34": {
+"gap": 0.0,
+"iou": 0.908,
+"fixed_gap": 1.8,
+"fixed_iou": 0.808
+},
+"18:54": {
+"gap": 0.0,
+"iou": 0.918,
+"fixed_gap": 2.0,
+"fixed_iou": 0.81
+},
+"19:24": {
+"gap": 0.0,
+"iou": 0.896,
+"fixed_gap": 1.8,
+"fixed_iou": 0.807
+},
+"19:34": {
+"gap": 0.0,
+"iou": 0.907,
+"fixed_gap": 1.8,
+"fixed_iou": 0.81
+},
+"19:47": {
+"gap": 0.0,
+"iou": 0.858,
+"fixed_gap": 1.6,
+"fixed_iou": 0.793
+},
+"19:54": {
+"gap": 0.0,
+"iou": 0.901,
+"fixed_gap": 1.8,
+"fixed_iou": 0.813
+},
+"22:24": {
+"gap": 0.0,
+"iou": 0.921,
+"fixed_gap": 1.8,
+"fixed_iou": 0.828
+},
+"22:34": {
+"gap": 0.0,
+"iou": 0.928,
+"fixed_gap": 1.6,
+"fixed_iou": 0.836
+},
+"22:54": {
+"gap": 0.0,
+"iou": 0.935,
+"fixed_gap": 2.0,
+"fixed_iou": 0.832
+},
+"23:01": {
+"gap": 0.8,
+"iou": 0.921,
+"fixed_gap": 1.6,
+"fixed_iou": 0.87
+},
+"23:24": {
+"gap": 0.0,
+"iou": 0.916,
+"fixed_gap": 1.8,
+"fixed_iou": 0.815
+},
+"23:34": {
+"gap": 0.0,
+"iou": 0.92,
+"fixed_gap": 1.8,
+"fixed_iou": 0.799
+},
+"23:54": {
+"gap": 0.0,
+"iou": 0.93,
+"fixed_gap": 1.6,
+"fixed_iou": 0.85
+}
+}

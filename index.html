@@ -28,6 +28,7 @@
   .seg button:hover, .tool:hover { color:var(--ink); }
   .seg button.on, .tool.on { color:#fff; background:var(--seg-on); }
   .tool { background:var(--seg); border-radius:12px; padding:9px 14px; }
+  .seg .lbl { padding:6px 4px 6px 10px; color:var(--dim); white-space:nowrap; }
   button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
   .sw { display:inline-flex; gap:5px; align-items:center; padding:3px 6px 3px 3px; background:var(--seg); border-radius:12px; }
   .sw button { appearance:none; -webkit-appearance:none; border:0; outline:0; width:22px; height:22px; border-radius:50%; padding:0; cursor:pointer; position:relative; }
@@ -57,7 +58,7 @@
       <feComposite in="di" in2="er" operator="out"/>
     </filter>
     <g id="glyphs">
-      <path id="g0"/><path id="g1"/><path id="g2"/><path id="g3"/>
+      <path id="g0"/><path id="g1"/><path id="g2"/><path id="g3"/><path id="g4"/><path id="g5"/><path id="g6"/><path id="g7"/>
     </g>
   </defs>
   <rect id="bgAll" x="0" y="0" width="100%" height="100%" fill="#000"/>
@@ -75,6 +76,7 @@
   <div class="seg" id="segMode"><button data-v="fill" title="M">На весь экран</button><button data-v="watch" title="M">Как часы</button></div>
   <div class="sw" id="swColor"></div>
   <div class="seg" id="segHour"><button data-v="0" title="H">24 ч</button><button data-v="1" title="H">12 ч</button></div>
+  <div class="seg" id="segSec"><span class="lbl">Секунды</span><button data-v="0" title="S">Тик</button><button data-v="1" title="S">Плавно</button></div>
   <button class="tool" id="bAod" title="A">Always-On</button>
   <button class="tool" id="bGrid" title="G">Сетка</button>
   <button class="tool" id="bFull" title="F">Полный экран</button>
@@ -89,10 +91,11 @@
     <tr><td>A</td><td>Always-On (контур)</td></tr>
     <tr><td>C</td><td>следующий цвет (Dynamic → 9 цветов)</td></tr>
     <tr><td>H</td><td>12 / 24 часа</td></tr>
+    <tr><td>S</td><td>секунды: тик / плавно</td></tr>
     <tr><td>G</td><td>сетка 60 строк и боксы</td></tr>
     <tr><td>?</td><td>эта подсказка</td></tr>
   </table>
-  <div style="margin-top:10px;color:var(--dim)">URL: ?t=02:37:19 &amp;speed=60 &amp;freeze=1 &amp;mode=fill|watch &amp;aod=1 &amp;color=dynamic|0..8 &amp;h12=1 &amp;grid=1 &amp;smooth=1 &amp;ui=0</div>
+  <div style="margin-top:10px;color:var(--dim)">URL: ?t=02:37:19 &amp;speed=60 &amp;freeze=1 &amp;mode=fill|watch &amp;aod=1 &amp;color=dynamic|0..8 &amp;h12=1 &amp;grid=1 &amp;smooth=1 (секунды плавно)  &amp;ui=0</div>
 </div></div>
 <div id="err"></div>
 
@@ -115,13 +118,18 @@
   var WATCH_AR = 416 / 496, SCREEN_R = 11.9;         // пропорция экрана часов, радиус скругления (u)
   var ONE_MAX = 1.15;                                  // во сколько раз «1» может стать шире своего бокса
   var STRETCH_X = +(new URLSearchParams(location.search).get('stretch') || 1.6), STRETCH_Y = Math.max(1.8, STRETCH_X);   // предел растяжения цифр в «на весь экран»
-  var MORPH_START = -150, MORPH_DUR = 185;           // мс относительно :00.000 (замер раскадровки TDC: линейно, старт :59.85)
+  /* Смена минуты: пружина (Apple: damping ratio + response), считается аналитически от времени, а не накопительно,
+     поэтому ?t= / ?speed= / ?freeze= и фоновые вкладки детерминированы. Старт :59.85 (замер TDC), цифра меняется ровно в :00.000.
+     ζ = 0.66 → перелёт ≈ 6%; response 0.60 с (ω₀ = 2π/0.6) → пик на ≈ 0.46 с, оседание (2%) ≈ 0.58 с, окно 1 с. */
+  var SPRING_Z = 0.66, SPRING_RESP = 0.60;
+  var REDUCED = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var MORPH_START = REDUCED ? -100 : -150, MORPH_DUR = REDUCED ? 200 : 1000;   // мс относительно :00.000; reduced-motion: короткий кроссфейд
   var TICK_MS = 200;                                  // анимация тика секунд
   var SLOTS = ['H1', 'H2', 'M1', 'M2'];
 
   /* ---------- настройки ---------- */
   var Q = new URLSearchParams(location.search);
-  var S = { mode: 'fill', aod: false, color: 'dynamic', h12: false, grid: false, smooth: false };
+  var S = { mode: 'fill', aod: false, color: 'dynamic', h12: false, grid: false, smooth: false };   // smooth: секунды «Плавно» (false = «Тик»)
   try { var saved = JSON.parse(localStorage.getItem('flux.settings') || '{}'); for (var k in saved) if (k in S) S[k] = saved[k]; } catch (e) {}
   function qb(n) { return Q.get(n) === '1' || Q.get(n) === 'true'; }
   if (Q.get('mode') === 'fill' || Q.get('mode') === 'watch') S.mode = Q.get('mode');
@@ -229,22 +237,34 @@
 
   /* ---------- сцена как функция времени ---------- */
   function ease3(x) { x = x < 0 ? 0 : x > 1 ? 1 : x; return 1 - Math.pow(1 - x, 3); }
+  var SP_WN = 2 * Math.PI / SPRING_RESP, SP_WD = SP_WN * Math.sqrt(1 - SPRING_Z * SPRING_Z), SP_A = SPRING_Z * SP_WN;
+  function springP(t) {                              // t — секунды от старта; 0 → 1 с перелётом, нулевая начальная скорость
+    if (t <= 0) return 0;
+    var e = Math.exp(-SP_A * t);
+    return 1 - e * (Math.cos(SP_WD * t) + (SP_A / SP_WD) * Math.sin(SP_WD * t));
+  }
+  function lerpBox(a, b, p) { return [a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p, Math.max(0.01, a[2] + (b[2] - a[2]) * p), Math.max(0.01, a[3] + (b[3] - a[3]) * p)]; }
+  function sameSlot(a, b) { return a.d === b.d && a.b.join() === b.b.join() && JSON.stringify(a.p) === JSON.stringify(b.p); }
   function scene(ms) {
     var msd = ((ms % DAY) + DAY) % DAY, cur = Math.floor(msd / 60000), inMin = msd - cur * 60000;
     var k = Math.round(msd / 60000), dt = msd - k * 60000;     // k — ближайшая граница минуты
     var items = [], morphing = false;
     if (dt >= MORPH_START && dt < MORPH_DUR + MORPH_START) {
       morphing = true;
-      var p = (dt - MORPH_START) / MORPH_DUR, A = slotsFor(k - 1), B = slotsFor(k);
+      var A = slotsFor(k - 1), B = slotsFor(k), tt = (dt - MORPH_START) / 1000;
+      var p = REDUCED ? (dt - MORPH_START) / MORPH_DUR : springP(tt);
       for (var i = 0; i < 4; i++) {
         var n = SLOTS[i], a = A[n], b = B[n];
-        if (a && b) {
+        if (REDUCED) {                                 // кроссфейд на месте, без движения боксов
+          if (a && b && sameSlot(a, b)) items.push({ d: a.d, b: a.b, p: a.p, o: 1 });
+          else { if (a) items.push({ d: a.d, b: a.b, p: a.p, o: 1 - p }); if (b) items.push({ d: b.d, b: b.b, p: b.p, o: p }); }
+        } else if (a && b) {
           var s = dt >= 0 ? b : a;
-          items.push({ d: s.d, b: [a.b[0] + (b.b[0] - a.b[0]) * p, a.b[1] + (b.b[1] - a.b[1]) * p, a.b[2] + (b.b[2] - a.b[2]) * p, a.b[3] + (b.b[3] - a.b[3]) * p], p: s.p, o: 1 });
+          items.push({ d: s.d, b: lerpBox(a.b, b.b, p), p: s.p, o: 1 });
         } else if (a) {
-          items.push(shrink(a, 1 - p));
+          items.push(shrink(a, 1 - p));                // исчезновение: пружина к нулю (перелёт отсекается)
         } else if (b) {
-          items.push(shrink(b, p));
+          items.push(shrink(b, p));                    // появление: пружина с лёгким перелётом размера
         }
       }
     } else {
@@ -268,19 +288,19 @@
     return { items: items, rows: rows, base: col[0], fill: col[1], morphing: morphing, inMin: inMin, ticking: !S.aod && !FREEZE && (S.smooth || (inMin % 1000) < TICK_MS) };
   }
   function shrink(s, f) {                         // слот появляется/исчезает: сжатие к центру своего бокса + затухание
-    var b = s.b, cx = b[0] + b[2] / 2, cy = b[1] + b[3] / 2, w = b[2] * f, h = b[3] * f;
-    return { d: s.d, b: [cx - w / 2, cy - h / 2, w, h], p: s.p, o: f };
+    var b = s.b, cx = b[0] + b[2] / 2, cy = b[1] + b[3] / 2, g = Math.max(0, f), w = b[2] * g, h = b[3] * g;
+    return { d: s.d, b: [cx - w / 2, cy - h / 2, w, h], p: s.p, o: Math.min(1, g) };
   }
 
   /* ---------- отрисовка ---------- */
-  var lastSig = '', gEl = [$('g0'), $('g1'), $('g2'), $('g3')];
+  var lastSig = '', gEl = [$('g0'), $('g1'), $('g2'), $('g3'), $('g4'), $('g5'), $('g6'), $('g7')];
   function render(ms) {
     var sc = scene(ms), uy = G.uy;
     // глифы
     var sig = sc.items.map(function (it) { return it.d + ':' + it.b.join(',') + ':' + it.o; }).join('|') + '|' + S.mode + G.W + 'x' + G.H;
     if (sig !== lastSig) {
       lastSig = sig;
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < 8; i++) {
         var it = sc.items[i], el = gEl[i];
         if (!it || it.b[2] < 0.6 || it.b[3] < 0.6 || it.o <= 0.01) { el.setAttribute('d', ''); continue; }
         var mb = mapBox(it.b, it.d);
@@ -297,7 +317,7 @@
     rf.setAttribute('x', G.ox); rf.setAttribute('width', G.sw); rf.setAttribute('y', lineY); rf.setAttribute('height', Math.max(0, G.oy + G.sh - lineY));
     rf.setAttribute('fill', cFill);
     var rA = $('rA'), rB = $('rB');
-    rA.setAttribute('x', 0); rA.setAttribute('width', G.W); rA.setAttribute('y', 0); rA.setAttribute('height', Math.max(0, lineY));
+    rA.setAttribute('x', 0); rA.setAttribute('width', G.W); rA.setAttribute('y', 0); rA.setAttribute('height', Math.max(0, Math.min(G.H, lineY + 1)));   // +1px под нижний клип: нет шва на стыке (inkB рисуется поверх)
     rB.setAttribute('x', 0); rB.setAttribute('width', G.W); rB.setAttribute('y', lineY); rB.setAttribute('height', Math.max(0, G.H - lineY));
     var ia = $('inkA'), ib = $('inkB');
     if (aod) {
@@ -368,7 +388,7 @@
     PAL.forEach(function (c, i) { var b = document.createElement('button'); b.className = 'c'; b.style.background = c; b.setAttribute('data-v', i); b.title = 'цвет ' + (i + 1); sw.appendChild(b); });
   })();
   function syncUI() {
-    setSeg('segMode', S.mode); setSeg('segHour', S.h12 ? 1 : 0);
+    setSeg('segMode', S.mode); setSeg('segHour', S.h12 ? 1 : 0); setSeg('segSec', S.smooth ? 1 : 0);
     Array.prototype.forEach.call(sw.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === String(S.color)); });
     $('bAod').classList.toggle('on', S.aod); $('bGrid').classList.toggle('on', S.grid);
     $('grid').setAttribute('display', S.grid ? 'inline' : 'none');
@@ -382,6 +402,7 @@
   }
   $('segMode').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S.mode = b.getAttribute('data-v'); apply(true); });
   $('segHour').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S.h12 = b.getAttribute('data-v') === '1'; apply(false); });
+  $('segSec').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S.smooth = b.getAttribute('data-v') === '1'; apply(false); });
   sw.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var v = b.getAttribute('data-v'); S.color = v === 'dynamic' ? 'dynamic' : +v; apply(false); });
   $('bAod').addEventListener('click', function () { S.aod = !S.aod; apply(false); });
   $('bGrid').addEventListener('click', function () { S.grid = !S.grid; apply(false); });
@@ -397,6 +418,7 @@
     else if (k === 'a' || k === 'A' || k === 'ф' || k === 'Ф') { S.aod = !S.aod; apply(false); }
     else if (k === 'c' || k === 'C' || k === 'с' || k === 'С') nextColor();
     else if (k === 'h' || k === 'H' || k === 'р' || k === 'Р') { S.h12 = !S.h12; apply(false); }
+    else if (k === 's' || k === 'S' || k === 'ы' || k === 'Ы') { S.smooth = !S.smooth; apply(false); }
     else if (k === 'g' || k === 'G' || k === 'п' || k === 'П') { S.grid = !S.grid; apply(false); }
     else if (k === '?' || k === '/') $('help').classList.toggle('show');
     else if (k === 'Escape') $('help').classList.remove('show');
