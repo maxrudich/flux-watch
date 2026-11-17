@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.DS_Store
+.claude/
+# материалы Apple с TDC: только для локальной работы, не публикуем
+reference/
+tools/shots/
+legacy/

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flux: приёмка раскладок</title>
+<style>
+  :root { --bg:#0e0e10; --surf:#1a1a1d; --surf2:#26262a; --ink:#e9e9ec; --dim:#8d8d94; --ok:#34c759; --bad:#ff453a; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:600; } h2 { font-size:15px; margin:28px 0 10px; color:var(--dim); font-weight:600; }
+  .card { background:var(--surf); border-radius:14px; padding:14px 18px; display:inline-block; margin:0 10px 10px 0; vertical-align:top; }
+  .big { font-size:28px; font-weight:600; font-variant-numeric:tabular-nums; } .dim { color:var(--dim); font-size:12px; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  table { border-collapse:separate; border-spacing:0; background:var(--surf); border-radius:12px; overflow:hidden; }
+  td, th { padding:6px 14px; text-align:left; font-variant-numeric:tabular-nums; } th { color:var(--dim); font-weight:500; }
+  tr:nth-child(even) td { background:rgba(255,255,255,.03); }
+  canvas { max-width:100%; border-radius:12px; background:#000; display:block; }
+  .worst { display:flex; flex-wrap:wrap; gap:10px; } .worst figure { margin:0; background:var(--surf); border-radius:10px; padding:8px; font-size:12px; color:var(--dim); text-align:center; }
+  #msg { color:var(--bad); margin:12px 0; }
+</style>
+</head>
+<body>
+<h1>Flux: приёмка раскладок (§9.1)</h1>
+<div class="dim">Наш рендер (src/glyph.js + data/layouts.js) поверх ячеек reference/tdc_3_all_1440_grid.jpg. IoU мягкий: Σmin(покрытие, чернила) / Σmax. Красный — только наш, синий — только эталон, белый — совпало.</div>
+<div id="msg"></div>
+<div id="cards"></div>
+<h2>Голдены (§4.8): расхождение краёв боксов с крупными кадрами, u</h2>
+<div id="gold"></div>
+<h2>20 худших ячеек</h2>
+<div class="worst" id="worst"></div>
+<h2>Мозаика всех 1440 ячеек (24 часа × 60 минут)</h2>
+<canvas id="mosaic"></canvas>
+<script src="../data/layouts.js"></script>
+<script src="../src/glyph.js"></script>
+<script src="verify_lattice.js"></script>
+<script src="goldens.js"></script>
+<script>
+(function () {
+  var LAY = window.FLUX_LAYOUTS, LAT = window.FLUX_LATTICE, T = 4, CX0 = 5.2, CX1 = 45.08, PAD_U = 1.5;
+  var s = LAT.s;
+  function digitsFor(h, m) { return m === 0 ? String(h).split('').map(Number) : [(h / 10) | 0, h % 10, (m / 10) | 0, m % 10]; }
+
+  /* голдены */
+  (function () {
+    var rows = '<table><tr><th>минута</th><th>источник</th><th>макс. |Δ|, u</th><th></th></tr>', allOk = true;
+    window.FLUX_GOLDENS.forEach(function (g) {
+      var p = g.minute.split(':'), lay = LAY[(+p[0]) * 60 + (+p[1])], worst = 0;
+      g.boxes.forEach(function (b, k) {
+        var e = lay[k], mine = [e[0], e[1], e[0] + e[2], e[1] + e[3]];
+        for (var i = 0; i < 4; i++) if (b[i] !== null) worst = Math.max(worst, Math.abs(b[i] - mine[i]));
+      });
+      var ok = worst <= 1.0; allOk = allOk && ok;
+      rows += '<tr><td>' + g.minute + '</td><td>' + g.src + '</td><td>' + worst.toFixed(2) + '</td><td class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? 'сошлось (≤ 1u)' : 'НЕ СОШЛОСЬ') + '</td></tr>';
+    });
+    document.getElementById('gold').innerHTML = rows + '</table>';
+  })();
+
+  var img = new Image();
+  img.onload = run;
+  img.onerror = function () { document.getElementById('msg').textContent = 'Не удалось загрузить reference/tdc_3_all_1440_grid.jpg'; };
+  img.src = '../reference/tdc_3_all_1440_grid.jpg';
+
+  function run() {
+    var cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    var cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(img, 0, 0);
+    try { cx.getImageData(0, 0, 1, 1); } catch (e) { document.getElementById('msg').textContent = 'Канвас заблокирован (file://). Откройте через локальный сервер: python3 -m http.server'; return; }
+    var res = [], mosaic = document.getElementById('mosaic'), MS = 0.5;
+    mosaic.width = Math.round(cv.width * MS); mosaic.height = Math.round(cv.height * MS);
+    var mx = mosaic.getContext('2d');
+    var work = document.createElement('canvas'), wx = work.getContext('2d', { willReadFrequently: true });
+    var cells = [];
+    for (var h = 0; h < 24; h++) for (var m = 0; m < 60; m++) {
+      var L = LAT.L0 + LAT.Lp * m, Tt = LAT.T0 + LAT.Tp * h;
+      var wx0 = Math.floor(L + (CX0 - PAD_U) * s), wx1 = Math.ceil(L + (CX1 + PAD_U) * s), wy0 = Math.floor(Tt + (5 - PAD_U) * s), wy1 = Math.ceil(Tt + (55 + PAD_U) * s);
+      var W = wx1 - wx0, H = wy1 - wy0;
+      work.width = W; work.height = H;
+      wx.clearRect(0, 0, W, H);
+      var d = digitsFor(h, m), lay = LAY[h * 60 + m];
+      wx.fillStyle = '#fff';
+      for (var k = 0; k < d.length; k++) {
+        var e = lay[k], P = FluxGlyph.DEFAULT_P;
+        if (e[4]) { P = {}; for (var kk in FluxGlyph.DEFAULT_P) P[kk] = FluxGlyph.DEFAULT_P[kk]; for (kk in e[4]) P[kk] = e[4][kk]; }
+        // координаты: u → пиксели окна (как в extract.py: px = L + u*s − wx0)
+        var path = new Path2D(FluxGlyph.glyphPath(d[k], e[0], e[1], e[2], e[3], T, P, s, s, L - wx0, Tt - wy0));
+        wx.fill(path);
+      }
+      var mine = wx.getImageData(0, 0, W, H).data, ref = cx.getImageData(wx0, wy0, W, H).data;
+      var inter = 0, uni = 0, out = mx.createImageData(W, H);
+      for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+        var ux = (x + 0.5 - (L - wx0)) / s, uy = (y + 0.5 - (Tt - wy0)) / s;
+        var inW = ux >= CX0 - 0.5 && ux <= CX1 + 0.5 && uy >= 4.5 && uy <= 55.5;
+        var i = (y * W + x) * 4, a = mine[i + 3] / 255, b = 1 - ref[i] / 255;
+        if (inW) { inter += Math.min(a, b); uni += Math.max(a, b); }
+        out.data[i] = 255 * a; out.data[i + 1] = 255 * Math.min(a, b); out.data[i + 2] = 255 * b; out.data[i + 3] = 255;
+      }
+      var iou = inter / Math.max(uni, 1e-9);
+      res.push({ h: h, m: m, iou: iou });
+      cells.push({ out: out, W: W, H: H, L: L, T: Tt, wx0: wx0, wy0: wy0, h: h, m: m });
+    }
+    // мозаика в масштабе MS: рисуем каждую ячейку через временный канвас
+    cells.forEach(function (c) {
+      work.width = c.W; work.height = c.H; wx.putImageData(c.out, 0, 0);
+      mx.drawImage(work, c.wx0 * MS, c.wy0 * MS, c.W * MS, c.H * MS);
+    });
+    var ious = res.map(function (r) { return r.iou; }).sort(function (a, b) { return a - b; });
+    var med = ious[ious.length >> 1], mean = ious.reduce(function (a, b) { return a + b; }, 0) / ious.length;
+    var below75 = ious.filter(function (v) { return v < 0.75; }).length, below80 = ious.filter(function (v) { return v < 0.8; }).length, below90 = ious.filter(function (v) { return v < 0.9; }).length;
+    function card(t, v, cls, sub) { return '<div class="card"><div class="dim">' + t + '</div><div class="big ' + (cls || '') + '">' + v + '</div><div class="dim">' + (sub || '') + '</div></div>'; }
+    document.getElementById('cards').innerHTML =
+      card('медианный IoU', med.toFixed(3), med >= 0.9 ? 'ok' : 'bad', 'цель ≥ 0.90') +
+      card('средний IoU', mean.toFixed(3), '', '1440 ячеек') +
+      card('минимум', ious[0].toFixed(3), ious[0] >= 0.75 ? 'ok' : 'bad', 'цель: ни одной < 0.75') +
+      card('ячеек < 0.75', below75, below75 === 0 ? 'ok' : 'bad', '') + card('ячеек < 0.80', below80, '', '') + card('ячеек < 0.90', below90, '', '');
+    var worst = res.slice().sort(function (a, b) { return a.iou - b.iou; }).slice(0, 20), wEl = document.getElementById('worst');
+    worst.forEach(function (r) {
+      var c = cells[r.h * 60 + r.m], cc = document.createElement('canvas'); cc.width = c.W; cc.height = c.H;
+      cc.getContext('2d').putImageData(c.out, 0, 0); cc.style.width = (c.W * 3) + 'px'; cc.style.height = (c.H * 3) + 'px'; cc.style.imageRendering = 'pixelated';
+      var f = document.createElement('figure'); f.appendChild(cc);
+      f.appendChild(document.createTextNode(('0' + r.h).slice(-2) + ':' + ('0' + r.m).slice(-2) + ' · ' + r.iou.toFixed(3)));
+      wEl.appendChild(f);
+    });
+    window.FLUX_VERIFY = { median: med, mean: mean, min: ious[0], below75: below75, below80: below80, results: res };
+  }
+})();
+</script>
+</body>
+</html>

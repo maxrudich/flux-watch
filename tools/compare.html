@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flux: сверка кадров с референсом</title>
+<style>
+  :root { --bg:#0e0e10; --surf:#1a1a1d; --ink:#e9e9ec; --dim:#8d8d94; --ok:#34c759; --bad:#ff453a; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system, system-ui, sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; font-weight:600; } .dim { color:var(--dim); font-size:12px; }
+  table { border-collapse:separate; border-spacing:0; background:var(--surf); border-radius:12px; overflow:hidden; margin:14px 0; }
+  td, th { padding:7px 14px; text-align:left; font-variant-numeric:tabular-nums; } th { color:var(--dim); font-weight:500; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } figure { margin:0; background:var(--surf); border-radius:12px; padding:10px; font-size:12px; color:var(--dim); }
+  canvas { max-width:100%; border-radius:8px; display:block; margin-bottom:6px; }
+  iframe { position:absolute; left:-10000px; top:0; border:0; }
+</style>
+</head>
+<body>
+<h1>Flux: кадры циферблата против референса (§9.2–9.3, 9.6)</h1>
+<div class="dim">Наш рендер (index.html в iframe нужного размера, SVG → canvas) накладывается на эталонный кроп. Метрика: средний |ΔRGB| и доля пикселей с |Δ| &gt; 60 внутри экрана часов (скруглённый прямоугольник, уменьшенный на 3 px). Красный/синий/белый на картинке не используются: слева эталон, по центру наш, справа разность.</div>
+<div id="out"></div><div class="row" id="figs"></div>
+<script>
+(function () {
+  var AR = 416 / 496, R_U = 11.9;
+  // sx, sy — левый верх экрана часов в кропе (px); u — px на u кропа (по высоте экрана 60u)
+  var TESTS = [
+    { name: '02:37:19 (ink: чёрные на зелёном, светлые на синем)', crop: '../reference/crops/0237_19_hires.png', q: 't=02:37:19&freeze=1&mode=watch&color=1', u: 17.44, sx: 78, sy: -121.4, cw: 1100, ch: 1300 },
+    { name: '02:37:35', crop: null },
+    { name: '03:09:24 (линия в кропе на строке ≈24, не 30)', crop: '../reference/crops/0309_0310_hires.png', q: 't=03:09:24&freeze=1&mode=watch', u: 12.66, sx: 61, sy: 87, cw: 1600, ch: 945 },
+    { name: '03:10:30', crop: '../reference/crops/0309_0310_hires.png', q: 't=03:10:30&freeze=1&mode=watch', u: 12.66, sx: 861, sy: 87, cw: 1600, ch: 945 }
+  ].filter(function (t) { return t.crop; });
+  var out = document.getElementById('out'), figs = document.getElementById('figs');
+  var rows = '<table><tr><th>кадр</th><th>средний |ΔRGB|</th><th>пикселей с |Δ|>60</th><th></th></tr>';
+  function loadImg(src) { return new Promise(function (res, rej) { var i = new Image(); i.onload = function () { res(i); }; i.onerror = rej; i.src = src; }); }
+  function snap(q, W, H) {
+    return new Promise(function (res) {
+      var f = document.createElement('iframe'); f.width = W; f.height = H; f.style.width = W + 'px'; f.style.height = H + 'px';
+      f.src = '../index.html?' + q; document.body.appendChild(f);
+      f.onload = function () {
+        setTimeout(function () {
+          var svg = f.contentDocument.getElementById('stage').cloneNode(true);
+          svg.setAttribute('width', W); svg.setAttribute('height', H);
+          var xml = new XMLSerializer().serializeToString(svg);
+          var img = new Image(); img.onload = function () { document.body.removeChild(f); res(img); };
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+        }, 300);
+      };
+    });
+  }
+  async function run() {
+    for (var i = 0; i < TESTS.length; i++) {
+      var t = TESTS[i], crop = await loadImg(t.crop);
+      var sh = 60 * t.u, sw = sh * AR, H = Math.round(sh), W = Math.round(sw + 200);
+      var img = await snap(t.q, W, H);              // watch: экран по центру по x, на всю высоту → верх экрана y=0
+      var ox = (W - sw) / 2;
+      var A = document.createElement('canvas'); A.width = t.cw; A.height = t.ch;
+      var ax = A.getContext('2d', { willReadFrequently: true }); ax.fillStyle = '#000'; ax.fillRect(0, 0, t.cw, t.ch);
+      ax.drawImage(img, t.sx - ox, t.sy);
+      var B = document.createElement('canvas'); B.width = t.cw; B.height = t.ch;
+      var bx = B.getContext('2d', { willReadFrequently: true }); bx.drawImage(crop, 0, 0);
+      var a = ax.getImageData(0, 0, t.cw, t.ch).data, b = bx.getImageData(0, 0, t.cw, t.ch).data;
+      var D = document.createElement('canvas'); D.width = t.cw; D.height = t.ch; var dx = D.getContext('2d'), dd = dx.createImageData(t.cw, t.ch);
+      var rad = R_U * t.u, n = 0, sum = 0, bad = 0, inset = 3;
+      for (var y = 0; y < t.ch; y++) for (var x = 0; x < t.cw; x++) {
+        var px = x - t.sx, py = y - t.sy, inside = px >= inset && px <= sw - inset && py >= inset && py <= sh - inset;
+        if (inside) {                                   // скруглённые углы
+          var cx = px < rad ? rad : px > sw - rad ? sw - rad : px, cy = py < rad ? rad : py > sh - rad ? sh - rad : py;
+          if ((px - cx) * (px - cx) + (py - cy) * (py - cy) > (rad - inset) * (rad - inset)) inside = false;
+        }
+        var i2 = (y * t.cw + x) * 4, d = (Math.abs(a[i2] - b[i2]) + Math.abs(a[i2 + 1] - b[i2 + 1]) + Math.abs(a[i2 + 2] - b[i2 + 2])) / 3;
+        dd.data[i2] = dd.data[i2 + 1] = dd.data[i2 + 2] = inside ? Math.min(255, d * 2) : 40; dd.data[i2 + 3] = 255;
+        if (inside) { n++; sum += d; if (d > 60) bad++; }
+      }
+      dx.putImageData(dd, 0, 0);
+      var mean = sum / n, frac = bad / n, ok = frac < 0.03;
+      rows += '<tr><td>' + t.name + '</td><td>' + mean.toFixed(2) + '</td><td>' + (frac * 100).toFixed(2) + ' %</td><td class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? 'совпало' : 'расхождение') + '</td></tr>';
+      out.innerHTML = rows + '</table>';
+      [[B, 'эталон'], [A, 'наш'], [D, 'разность ×2']].forEach(function (p) {
+        var f = document.createElement('figure'); p[0].style.width = Math.min(420, t.cw) + 'px'; f.appendChild(p[0]); f.appendChild(document.createTextNode(t.name + ' · ' + p[1])); figs.appendChild(f);
+      });
+      window.FLUX_COMPARE = (window.FLUX_COMPARE || []).concat([{ name: t.name, mean: mean, frac: frac }]);
+    }
+    window.FLUX_COMPARE_DONE = true;
+  }
+  run().then(aodTest);
+
+  /* Always-On: контуры. В кропе цвета «видео» отличаются от палитры, поэтому сравниваем только форму: доля пикселей контура,
+     у которых в другом изображении есть контур не дальше 3 px (точность и полнота). */
+  async function aodTest() {
+    var u = 11.18, W = 600, H = 800, sh = 60 * u, sw = sh * AR, Wf = Math.round(sw + 200), Hf = Math.round(sh);
+    var crop = await loadImg('../reference/crops/1009_always_on.png');
+    var img = await snap('t=10:09:56&freeze=1&mode=watch&aod=1', Wf, Hf);
+    var A = document.createElement('canvas'); A.width = Wf; A.height = Hf; var ax = A.getContext('2d', { willReadFrequently: true });
+    ax.fillStyle = '#000'; ax.fillRect(0, 0, Wf, Hf); ax.drawImage(img, 0, 0);
+    var a = ax.getImageData(0, 0, Wf, Hf).data;
+    var B = document.createElement('canvas'); B.width = W; B.height = H; var bx = B.getContext('2d', { willReadFrequently: true }); bx.drawImage(crop, 0, 0);
+    var b = bx.getImageData(0, 0, W, H).data;
+    function maskOurs(x, y) { var i = (y * Wf + x) * 4; return a[i + 1] > 110 && a[i] < 120; }
+    function maskRef(x, y) { var i = (y * W + x) * 4; return b[i + 1] > 140 && b[i] < 160 && b[i + 1] - b[i] > 40; }
+    // выравнивание: самый левый и самый верхний пиксель контура ЦИФР (линию секунд исключаем: она шире цифр) — берём по строке ниже линии
+    function bounds(fn, w, h, ymin) { var x0 = 1e9, y0 = 1e9; for (var y = ymin; y < h; y++) for (var x = 0; x < w; x++) if (fn(x, y)) { if (x < x0) x0 = x; if (y < y0) y0 = y; } return [x0, y0]; }
+    var bo = bounds(maskOurs, Wf, Hf, 0), br = bounds(maskRef, W, H, 116);
+    // линия секунд — самая верхняя горизонталь; верх цифр: первая строка ниже линии (+8 px)
+    var rowsO = []; for (var y = 0; y < Hf; y++) { var c = 0; for (var x = 0; x < Wf; x++) if (maskOurs(x, y)) c++; rowsO.push(c); }
+    var lineO = rowsO.findIndex(function (c) { return c > sw * 0.8; }); var topO = rowsO.findIndex(function (c, i) { return i > lineO + 6 && c > 0; });
+    var rowsR = []; for (y = 0; y < H; y++) { c = 0; for (x = 0; x < W; x++) if (maskRef(x, y)) c++; rowsR.push(c); }
+    var lineR = rowsR.findIndex(function (c) { return c > 300; }); var topR = rowsR.findIndex(function (c, i) { return i > lineR + 6 && c > 0; });
+    var leftO = 1e9, leftR = 1e9;
+    for (y = topO; y < topO + 200; y++) for (x = 0; x < Wf; x++) if (maskOurs(x, y)) { if (x < leftO) leftO = x; break; }
+    for (y = topR; y < topR + 200; y++) for (x = 0; x < W; x++) if (maskRef(x, y)) { if (x < leftR) leftR = x; break; }
+    var dx = leftR - leftO, dy = topR - topO;
+    function near(fn, w, h, x, y) { for (var j = -3; j <= 3; j++) for (var i = -3; i <= 3; i++) { var xx = x + i, yy = y + j; if (xx >= 0 && yy >= 0 && xx < w && yy < h && fn(xx, yy)) return true; } return false; }
+    var nO = 0, okO = 0, nR = 0, okR = 0;
+    for (y = topR; y < H - 60; y++) for (x = 0; x < W; x++) {
+      var ox = x - dx, oy = y - dy;
+      if (maskRef(x, y)) { nR++; if (ox >= 0 && oy >= 0 && ox < Wf && oy < Hf && near(maskOurs, Wf, Hf, ox, oy)) okR++; }
+      if (ox >= 0 && oy >= 0 && ox < Wf && oy < Hf && maskOurs(ox, oy)) { nO++; if (near(maskRef, W, H, x, y)) okO++; }
+    }
+    var prec = okO / nO, rec = okR / nR;
+    out.innerHTML = out.innerHTML.replace('</table>', '<tr><td>AOD 10:09:56 (форма контура)</td><td>полнота ' + (rec * 100).toFixed(1) + ' %</td><td>точность ' + (prec * 100).toFixed(1) + ' %</td><td class="' + (rec > 0.9 && prec > 0.9 ? 'ok' : 'bad') + '">' + (rec > 0.9 && prec > 0.9 ? 'совпало' : 'расхождение') + '</td></tr><tr><td colspan="4" class="dim">линия секунд: ' + (lineO - topO) + ' px над верхом цифр у нас против ' + (lineR - topR) + ' px в кропе</td></tr></table>');
+    window.FLUX_AOD = { precision: prec, recall: rec, lineGapOurs: lineO - topO, lineGapRef: lineR - topR };
+  }
+})();
+</script>
+</body>
+</html>

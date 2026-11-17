@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flux">
+<title>Flux</title>
+<style>
+  :root { --panel: rgba(28,28,32,.78); --seg: rgba(255,255,255,.08); --seg-on: rgba(255,255,255,.26); --ink: #f2f2f4; --dim: rgba(242,242,244,.62); --focus:#7aa2ff; }
+  html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  body { font:13px/1.35 -apple-system, "SF Pro Text", system-ui, sans-serif; color:var(--ink); -webkit-user-select:none; user-select:none; }
+  body.idle { cursor:none; }
+  #stage { position:fixed; inset:0; width:100%; height:100%; display:block; }
+  #panel { position:fixed; left:50%; bottom:22px; transform:translate(-50%,0); display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center;
+           padding:8px 10px; max-width:calc(100vw - 24px); background:var(--panel); border-radius:18px;
+           -webkit-backdrop-filter:blur(24px) saturate(160%); backdrop-filter:blur(24px) saturate(160%);
+           box-shadow:0 10px 30px rgba(0,0,0,.45); transition:opacity .25s ease, transform .25s ease; z-index:5; }
+  html.noui #panel { display:none; }
+  body.idle #panel { opacity:0; transform:translate(-50%,10px); pointer-events:none; }
+  .seg { display:inline-flex; gap:2px; padding:3px; background:var(--seg); border-radius:12px; }
+  .seg button, .tool { appearance:none; -webkit-appearance:none; border:0; outline:0; margin:0; font:inherit; color:var(--dim); background:transparent;
+           padding:6px 12px; border-radius:9px; cursor:pointer; white-space:nowrap; }
+  .seg button:hover, .tool:hover { color:var(--ink); }
+  .seg button.on, .tool.on { color:#fff; background:var(--seg-on); }
+  .tool { background:var(--seg); border-radius:12px; padding:9px 14px; }
+  button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+  .sw { display:inline-flex; gap:5px; align-items:center; padding:3px 6px 3px 3px; background:var(--seg); border-radius:12px; }
+  .sw button { appearance:none; -webkit-appearance:none; border:0; outline:0; width:22px; height:22px; border-radius:50%; padding:0; cursor:pointer; position:relative; }
+  .sw button.dyn { width:auto; border-radius:9px; padding:0 10px; height:26px; font:inherit; color:var(--dim); background:transparent; }
+  .sw button.dyn.on { background:var(--seg-on); color:#fff; }
+  .sw button.c.on { box-shadow:0 0 0 3px rgba(255,255,255,.9); }  /* состояние выбора: кольцо вокруг выбранного цвета */
+  #help { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); z-index:9; }
+  #help.show { display:flex; }
+  #help .card { background:rgba(36,36,42,.94); border-radius:20px; padding:22px 28px; box-shadow:0 20px 60px rgba(0,0,0,.6); max-width:420px; }
+  #help h2 { margin:0 0 10px; font-size:16px; font-weight:600; }
+  #help table { border-collapse:collapse; }
+  #help td { padding:3px 14px 3px 0; color:var(--dim); }
+  #help td:first-child { color:var(--ink); font-weight:600; }
+  #err { position:fixed; left:12px; top:12px; color:#ff8a8a; font:12px monospace; display:none; z-index:10; }
+</style>
+</head>
+<body>
+<svg id="stage" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-label="Циферблат Flux" role="img">
+  <defs>
+    <clipPath id="clipScreen"><rect id="rScreen" x="0" y="0" width="1" height="1"/></clipPath>
+    <clipPath id="clipA"><rect id="rA" x="0" y="0" width="1" height="1"/></clipPath>
+    <clipPath id="clipB"><rect id="rB" x="0" y="0" width="1" height="1"/></clipPath>
+    <!-- Always-On: контур штриха = глиф минус его эрозия -->
+    <filter id="aodf" filterUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feMorphology id="aodDi" in="SourceGraphic" operator="dilate" radius="1" result="di"/>
+      <feMorphology id="aodEr" in="SourceAlpha" operator="erode" radius="1" result="er"/>
+      <feComposite in="di" in2="er" operator="out"/>
+    </filter>
+    <g id="glyphs">
+      <path id="g0"/><path id="g1"/><path id="g2"/><path id="g3"/>
+    </g>
+  </defs>
+  <rect id="bgAll" x="0" y="0" width="100%" height="100%" fill="#000"/>
+  <g id="scene" clip-path="url(#clipScreen)">
+    <rect id="rBase" x="0" y="0" width="1" height="1"/>
+    <rect id="rFill" x="0" y="0" width="1" height="1"/>
+    <rect id="aodLine" x="0" y="0" width="1" height="1" display="none"/>
+    <g id="inkA" clip-path="url(#clipA)"><use href="#glyphs"/></g>
+    <g id="inkB" clip-path="url(#clipB)"><use href="#glyphs"/></g>
+  </g>
+  <g id="grid" pointer-events="none" display="none"></g>
+</svg>
+
+<div id="panel" role="toolbar" aria-label="Настройки">
+  <div class="seg" id="segMode"><button data-v="fill" title="M">На весь экран</button><button data-v="watch" title="M">Как часы</button></div>
+  <div class="sw" id="swColor"></div>
+  <div class="seg" id="segHour"><button data-v="0" title="H">24 ч</button><button data-v="1" title="H">12 ч</button></div>
+  <button class="tool" id="bAod" title="A">Always-On</button>
+  <button class="tool" id="bGrid" title="G">Сетка</button>
+  <button class="tool" id="bFull" title="F">Полный экран</button>
+  <button class="tool" id="bHelp" title="?">?</button>
+</div>
+
+<div id="help"><div class="card">
+  <h2>Flux — клавиши</h2>
+  <table>
+    <tr><td>F</td><td>полный экран</td></tr>
+    <tr><td>M</td><td>режим: на весь экран / как часы</td></tr>
+    <tr><td>A</td><td>Always-On (контур)</td></tr>
+    <tr><td>C</td><td>следующий цвет (Dynamic → 9 цветов)</td></tr>
+    <tr><td>H</td><td>12 / 24 часа</td></tr>
+    <tr><td>G</td><td>сетка 60 строк и боксы</td></tr>
+    <tr><td>?</td><td>эта подсказка</td></tr>
+  </table>
+  <div style="margin-top:10px;color:var(--dim)">URL: ?t=02:37:19 &amp;speed=60 &amp;freeze=1 &amp;mode=fill|watch &amp;aod=1 &amp;color=dynamic|0..8 &amp;h12=1 &amp;grid=1 &amp;smooth=1 &amp;ui=0</div>
+</div></div>
+<div id="err"></div>
+
+<script src="data/layouts.js"></script>
+<script src="src/glyph.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function fail(e) { var el = $('err'); el.style.display = 'block'; el.textContent = String(e && e.message || e); if (window.console) console.error(e); }
+  window.addEventListener('error', function (e) { fail(e.error || e.message); });
+  if (!window.FLUX_LAYOUTS || !window.FluxGlyph) { fail('нет data/layouts.js или src/glyph.js'); return; }
+
+  /* ---------- факты оригинала (ТЗ §2) ---------- */
+  var PAL = ['#5B79FF', '#00E285', '#A652FF', '#FF7541', '#FE36B6', '#00BCD2', '#FE3969', '#FDEF27', '#CDEB01'];
+  var LIGHT = { 0: 1, 2: 1, 4: 1, 6: 1 };            // на этих фонах светлые чернила
+  var INK_L = '#D6D6D8', INK_D = '#000000';
+  var CX0 = 5.2, CX1 = 45.08, T = 4;                 // поле контента, штрих, в u (u = высота экрана/60)
+  var CY0 = 5, CY1 = 55;                             // поле контента по вертикали (u, сверху)
+  var WATCH_AR = 416 / 496, SCREEN_R = 11.9;         // пропорция экрана часов, радиус скругления (u)
+  var ONE_MAX = 1.15;                                  // во сколько раз «1» может стать шире своего бокса
+  var STRETCH_X = +(new URLSearchParams(location.search).get('stretch') || 1.6), STRETCH_Y = Math.max(1.8, STRETCH_X);   // предел растяжения цифр в «на весь экран»
+  var MORPH_START = -150, MORPH_DUR = 185;           // мс относительно :00.000 (замер раскадровки TDC: линейно, старт :59.85)
+  var TICK_MS = 200;                                  // анимация тика секунд
+  var SLOTS = ['H1', 'H2', 'M1', 'M2'];
+
+  /* ---------- настройки ---------- */
+  var Q = new URLSearchParams(location.search);
+  var S = { mode: 'fill', aod: false, color: 'dynamic', h12: false, grid: false, smooth: false };
+  try { var saved = JSON.parse(localStorage.getItem('flux.settings') || '{}'); for (var k in saved) if (k in S) S[k] = saved[k]; } catch (e) {}
+  function qb(n) { return Q.get(n) === '1' || Q.get(n) === 'true'; }
+  if (Q.get('mode') === 'fill' || Q.get('mode') === 'watch') S.mode = Q.get('mode');
+  if (Q.has('aod')) S.aod = qb('aod');
+  if (Q.has('h12')) S.h12 = qb('h12');
+  if (Q.has('grid')) S.grid = qb('grid');
+  if (Q.has('smooth')) S.smooth = qb('smooth');
+  if (Q.has('color')) { var cv = Q.get('color'); S.color = (cv === 'dynamic') ? 'dynamic' : Math.max(0, Math.min(8, parseInt(cv, 10) || 0)); }
+  if (Q.get('ui') === '0') document.documentElement.classList.add('noui');   // скриншоты: без панели
+  function save() { try { localStorage.setItem('flux.settings', JSON.stringify(S)); } catch (e) {} }
+
+  /* ---------- время ---------- */
+  var SPEED = Q.has('speed') ? (parseFloat(Q.get('speed')) || 1) : 1;
+  var FREEZE = qb('freeze');
+  var DAY = 86400000;
+  function parseT(s) {
+    var m = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d+))?)?$/.exec(s || '');
+    if (!m) return null;
+    return ((+m[1] * 60 + +m[2]) * 60 + (+(m[3] || 0))) * 1000 + (m[4] ? Math.round(parseFloat('0.' + m[4]) * 1000) : 0);
+  }
+  var T_BASE = Q.has('t') ? parseT(Q.get('t')) : null;
+  var VIRTUAL = T_BASE !== null || SPEED !== 1 || FREEZE;
+  var perf0 = performance.now(), base0;
+  (function () { var d = new Date(); base0 = T_BASE !== null ? T_BASE : ((d.getHours() * 60 + d.getMinutes()) * 60 + d.getSeconds()) * 1000 + d.getMilliseconds(); })();
+  function nowMs() {                                  // миллисекунды от локальной полуночи (может превышать сутки при ускорении)
+    if (!VIRTUAL) { var d = new Date(); return ((d.getHours() * 60 + d.getMinutes()) * 60 + d.getSeconds()) * 1000 + d.getMilliseconds(); }
+    if (FREEZE) return base0;
+    return base0 + (performance.now() - perf0) * SPEED;
+  }
+
+  /* ---------- раскладки и слоты ---------- */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function slotsFor(absMin) {                         // absMin — минута суток (может выходить за 1440)
+    var mm = ((absMin % 1440) + 1440) % 1440, h = Math.floor(mm / 60), m = mm % 60;
+    var hh = S.h12 ? (h % 12 || 12) : h;
+    var lay = window.FLUX_LAYOUTS[hh * 60 + m], out = {}, digits, names;
+    if (m === 0) { digits = String(hh); names = digits.length === 2 ? ['H1', 'H2'] : ['H2']; }
+    else { digits = pad2(hh) + pad2(m); names = SLOTS; }
+    for (var i = 0; i < names.length; i++) {
+      var e = lay[i];
+      out[names[i]] = { d: +digits.charAt(i), b: [e[0], e[1], e[2], e[3]], p: e[4] || null };
+    }
+    return out;
+  }
+  var P0 = FluxGlyph.DEFAULT_P;
+  function mergeP(p) { if (!p) return P0; var o = {}, k; for (k in P0) o[k] = P0[k]; for (k in p) o[k] = p[k]; return o; }
+
+  /* ---------- цвета ---------- */
+  /* Один цвет: единственный кадр оригинала с выбранным цветом (TDC 02:37:19) даёт зелёный фон и синюю заливку,
+     т. е. заливка = предыдущий цвет цикла. В Dynamic заливка = следующий (проверено на 5 кадрах). Меняется только здесь. */
+  function singleFill(c) { return (c + 8) % 9; }
+  function colorsFor(absMin) {
+    var mm = ((absMin % 1440) + 1440) % 1440, base, fill;
+    if (S.color === 'dynamic') { base = (mm + 3) % 9; fill = (mm + 4) % 9; }
+    else { base = S.color; fill = singleFill(S.color); }
+    return [base, fill];
+  }
+  function ink(i) { return LIGHT[i] ? INK_L : INK_D; }
+
+  /* ---------- геометрия окна ---------- */
+  var G = {};
+  function layoutView() {
+    var W = window.innerWidth, H = window.innerHeight, uy, ox, oy, sw, sh;
+    var round = S.mode === 'watch';
+    if (S.mode === 'watch') {
+      sh = Math.min(H, W / WATCH_AR); sw = sh * WATCH_AR; uy = sh / 60; ox = (W - sw) / 2; oy = (H - sh) / 2;
+      G = { W: W, H: H, uy: uy, ox: ox, oy: oy, sw: sw, sh: sh, row: uy, gx: ox, gy: oy, kx: 1, ky: 1 };
+    } else {
+      /* «на весь экран»: цвет и линия секунд на весь экран, штрих 4u одинаковый во все стороны.
+         Масштаб u — по короткой стороне относительно часов; по длинной стороне цифры растягиваются
+         (боксы, а не глифы), зазоры 2u сохраняются. Растяжение ограничено, остаток уходит в поля. */
+      var WW = 60 * WATCH_AR;
+      uy = Math.min(W / WW, H / 60);
+      var kx = Math.min(STRETCH_X, Math.max(1, (W / uy - 2 * CX0) / (CX1 - CX0)));
+      var ky = Math.min(STRETCH_Y, Math.max(1, (H / uy - 2 * CY0) / (CY1 - CY0)));
+      var Wsu = 2 * CX0 + (CX1 - CX0) * kx, Hsu = 2 * CY0 + (CY1 - CY0) * ky;
+      ox = 0; oy = 0; sw = W; sh = H;
+      G = { W: W, H: H, uy: uy, ox: 0, oy: 0, sw: W, sh: H, row: H / 60,
+            gx: (W - Wsu * uy) / 2, gy: (H - Hsu * uy) / 2, kx: kx, ky: ky };
+    }
+    var svg = $('stage');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var r = $('rScreen');
+    r.setAttribute('x', ox); r.setAttribute('y', oy); r.setAttribute('width', sw); r.setAttribute('height', sh);
+    var rad = round ? SCREEN_R * uy : 0;
+    r.setAttribute('rx', rad); r.setAttribute('ry', rad);
+    $('rBase').setAttribute('x', ox); $('rBase').setAttribute('y', oy); $('rBase').setAttribute('width', sw); $('rBase').setAttribute('height', sh);
+    var ar = Math.max(0.5, 0.11 * T * uy * 0.5).toFixed(2);          // контур центрирован на границе глифа: ±половина линии
+    $('aodEr').setAttribute('radius', ar); $('aodDi').setAttribute('radius', ar);
+    lastSig = '';
+  }
+  /* из «естественных» u в uy-пространство: растяжение по x с сохранением зазоров 2u */
+  function stretch1(v0, v1, a, b, k) {             // отрезок [v0,v1] при растяжении области [a,b] в k раз; внутренние края
+    if (k === 1) return [v0, v1];                   // сдвигаются на (k-1), чтобы зазор 2u между соседями остался 2u
+    function sh(v) { var d = Math.min(Math.abs(v - a), Math.abs(v - b)); return Math.min(1, d / 0.5) * (k - 1); }
+    var V0 = a + (v0 - a) * k - sh(v0), V1 = a + (v1 - a) * k + sh(v1);
+    return [V0, Math.max(V0 + 0.01, V1)];
+  }
+  function mapBox(b, d) {
+    var x = stretch1(b[0], b[0] + b[2], CX0, CX1, G.kx), y = stretch1(b[1], b[1] + b[3], CY0, CY1, G.ky);
+    var w = x[1] - x[0];
+    if (d === 1 && w > b[2] * ONE_MAX) { w = b[2] * ONE_MAX; x[0] = x[1] - w; }   // «1» не растягивается: длинный флажок ломает форму
+    return [x[0], y[0], w, y[1] - y[0]];
+  }
+
+  /* ---------- сцена как функция времени ---------- */
+  function ease3(x) { x = x < 0 ? 0 : x > 1 ? 1 : x; return 1 - Math.pow(1 - x, 3); }
+  function scene(ms) {
+    var msd = ((ms % DAY) + DAY) % DAY, cur = Math.floor(msd / 60000), inMin = msd - cur * 60000;
+    var k = Math.round(msd / 60000), dt = msd - k * 60000;     // k — ближайшая граница минуты
+    var items = [], morphing = false;
+    if (dt >= MORPH_START && dt < MORPH_DUR + MORPH_START) {
+      morphing = true;
+      var p = (dt - MORPH_START) / MORPH_DUR, A = slotsFor(k - 1), B = slotsFor(k);
+      for (var i = 0; i < 4; i++) {
+        var n = SLOTS[i], a = A[n], b = B[n];
+        if (a && b) {
+          var s = dt >= 0 ? b : a;
+          items.push({ d: s.d, b: [a.b[0] + (b.b[0] - a.b[0]) * p, a.b[1] + (b.b[1] - a.b[1]) * p, a.b[2] + (b.b[2] - a.b[2]) * p, a.b[3] + (b.b[3] - a.b[3]) * p], p: s.p, o: 1 });
+        } else if (a) {
+          items.push(shrink(a, 1 - p));
+        } else if (b) {
+          items.push(shrink(b, p));
+        }
+      }
+    } else {
+      var st = slotsFor(cur);
+      for (var j = 0; j < 4; j++) { var q = st[SLOTS[j]]; if (q) items.push({ d: q.d, b: q.b, p: q.p, o: 1 }); }
+    }
+    // цвета и линия секунд
+    var colMin = cur, rows, sec = Math.floor(inMin / 1000);
+    if (S.smooth && !S.aod) { rows = inMin / 1000; }
+    else if (S.aod || FREEZE) { rows = sec; }                   // AOD и заморозка кадра: без анимации тика (устоявшееся состояние секунды)
+    else {
+      var sinceTick = inMin - sec * 1000;
+      rows = sec;
+      if (sinceTick < TICK_MS) {
+        if (sec > 0) rows = (sec - 1) + ease3(sinceTick / TICK_MS);
+        else { colMin = cur - 1; rows = 59 + ease3(sinceTick / TICK_MS); }   // последний тик: заливка доезжает до 60 со старым набором цветов
+      }
+    }
+    if (S.smooth && !S.aod && inMin < 1) colMin = cur;
+    var col = colorsFor(colMin);
+    return { items: items, rows: rows, base: col[0], fill: col[1], morphing: morphing, inMin: inMin, ticking: !S.aod && !FREEZE && (S.smooth || (inMin % 1000) < TICK_MS) };
+  }
+  function shrink(s, f) {                         // слот появляется/исчезает: сжатие к центру своего бокса + затухание
+    var b = s.b, cx = b[0] + b[2] / 2, cy = b[1] + b[3] / 2, w = b[2] * f, h = b[3] * f;
+    return { d: s.d, b: [cx - w / 2, cy - h / 2, w, h], p: s.p, o: f };
+  }
+
+  /* ---------- отрисовка ---------- */
+  var lastSig = '', gEl = [$('g0'), $('g1'), $('g2'), $('g3')];
+  function render(ms) {
+    var sc = scene(ms), uy = G.uy;
+    // глифы
+    var sig = sc.items.map(function (it) { return it.d + ':' + it.b.join(',') + ':' + it.o; }).join('|') + '|' + S.mode + G.W + 'x' + G.H;
+    if (sig !== lastSig) {
+      lastSig = sig;
+      for (var i = 0; i < 4; i++) {
+        var it = sc.items[i], el = gEl[i];
+        if (!it || it.b[2] < 0.6 || it.b[3] < 0.6 || it.o <= 0.01) { el.setAttribute('d', ''); continue; }
+        var mb = mapBox(it.b, it.d);
+        el.setAttribute('d', FluxGlyph.glyphPath(it.d, mb[0], mb[1], mb[2], mb[3], T, mergeP(it.p), uy, uy, G.gx, G.gy));
+        el.setAttribute('opacity', it.o < 1 ? it.o.toFixed(3) : '1');
+      }
+    }
+    // фон / заливка / клипы
+    var lineY = G.oy + G.sh - sc.rows * G.row;
+    var aod = S.aod;
+    var cBase = aod ? '#000' : PAL[sc.base], cFill = aod ? '#000' : PAL[sc.fill];
+    $('rBase').setAttribute('fill', cBase);
+    var rf = $('rFill');
+    rf.setAttribute('x', G.ox); rf.setAttribute('width', G.sw); rf.setAttribute('y', lineY); rf.setAttribute('height', Math.max(0, G.oy + G.sh - lineY));
+    rf.setAttribute('fill', cFill);
+    var rA = $('rA'), rB = $('rB');
+    rA.setAttribute('x', 0); rA.setAttribute('width', G.W); rA.setAttribute('y', 0); rA.setAttribute('height', Math.max(0, lineY));
+    rB.setAttribute('x', 0); rB.setAttribute('width', G.W); rB.setAttribute('y', lineY); rB.setAttribute('height', Math.max(0, G.H - lineY));
+    var ia = $('inkA'), ib = $('inkB');
+    if (aod) {
+      ia.setAttribute('fill', PAL[sc.base]); ib.setAttribute('fill', PAL[sc.fill]);
+      ia.setAttribute('filter', 'url(#aodf)'); ib.setAttribute('filter', 'url(#aodf)');
+      var ln = $('aodLine'), th = Math.max(1, 0.4 * uy);
+      var x0u = CX0 - 1.5, x1u = CX0 + (CX1 - CX0) * G.kx + 1.5;
+      ln.setAttribute('display', 'inline'); ln.setAttribute('x', G.gx + x0u * uy); ln.setAttribute('width', (x1u - x0u) * uy);
+      ln.setAttribute('y', lineY); ln.setAttribute('height', th); ln.setAttribute('fill', PAL[sc.fill]);
+      if (sc.rows <= 0.001) ln.setAttribute('display', 'none');
+    } else {
+      ia.setAttribute('fill', ink(sc.base)); ib.setAttribute('fill', ink(sc.fill));
+      ia.removeAttribute('filter'); ib.removeAttribute('filter');
+      $('aodLine').setAttribute('display', 'none');
+    }
+    if (S.grid) drawGrid(sc, lineY);
+    return sc;
+  }
+  function drawGrid(sc, lineY) {
+    var g = $('grid'), uy = G.uy, s = '', i;
+    for (i = 0; i <= 60; i++) {
+      var y = G.oy + G.sh - i * G.row, major = i % 10 === 0, cur = i === Math.round(sc.rows);
+      s += '<line x1="' + G.ox + '" x2="' + (G.ox + G.sw) + '" y1="' + y + '" y2="' + y + '" stroke="' + (cur ? '#ff3b30' : '#fff') + '" stroke-opacity="' + (cur ? 0.9 : major ? 0.45 : 0.16) + '" stroke-width="1"/>';
+      if (major) s += '<text x="' + (G.ox + 6) + '" y="' + (y - 4) + '" fill="#fff" fill-opacity=".7" font-size="12" font-family="monospace">:' + (i < 10 ? '0' : '') + i + '</text>';
+    }
+    sc.items.forEach(function (it) {
+      if (it.o < 0.99) return;
+      var b = mapBox(it.b, it.d);
+      s += '<rect x="' + (G.gx + b[0] * uy) + '" y="' + (G.gy + b[1] * uy) + '" width="' + (b[2] * uy) + '" height="' + (b[3] * uy) + '" fill="none" stroke="#ff2d92" stroke-opacity=".85" stroke-width="1"/>';
+    });
+    g.innerHTML = s;
+  }
+
+  /* ---------- планировщик: rAF только на анимацию, в покое таймер раз в секунду ---------- */
+  var timer = 0, raf = 0, hidden = false;
+  function stop() { clearTimeout(timer); cancelAnimationFrame(raf); timer = 0; raf = 0; }
+  function frame() {
+    clearTimeout(timer); cancelAnimationFrame(raf); raf = 0; timer = 0;
+    var ms = nowMs(), sc = render(ms);
+    if (FREEZE) return;
+    if (S.smooth && !S.aod || sc.morphing || sc.ticking && !S.aod) {
+      raf = requestAnimationFrame(frame);
+      timer = setTimeout(frame, 250);                 // страховка: если rAF не приходит (скрытое окно, сон), цикл не умирает
+      return;
+    }
+    // ближайшее событие: граница секунды или начало морфа
+    var msd = ((ms % DAY) + DAY) % DAY, inSec = msd % 1000, toSec = 1000 - inSec;
+    var inMin = msd % 60000, toMorph = (60000 + MORPH_START) - inMin;
+    var wait = toSec; if (toMorph > 0 && toMorph < wait) wait = toMorph;
+    timer = setTimeout(frame, Math.max(1, wait / SPEED) + 2);
+  }
+  function restart() { stop(); layoutView(); if (!hidden) frame(); else render(nowMs()); }
+  document.addEventListener('visibilitychange', function () {
+    hidden = document.hidden;
+    if (hidden) stop(); else { stop(); lastSig = ''; frame(); requestWake(); }
+  });
+  window.addEventListener('resize', restart);
+
+  /* ---------- Wake Lock ---------- */
+  var wake = null;
+  function requestWake() { try { if (navigator.wakeLock && !document.hidden) navigator.wakeLock.request('screen').then(function (l) { wake = l; }, function () {}); } catch (e) {} }
+
+  /* ---------- UI ---------- */
+  function setSeg(id, val) { Array.prototype.forEach.call($(id).querySelectorAll('button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === String(val)); }); }
+  var sw = $('swColor');
+  (function buildSw() {
+    var d = document.createElement('button'); d.className = 'dyn'; d.textContent = 'Dynamic'; d.setAttribute('data-v', 'dynamic'); d.title = 'C'; sw.appendChild(d);
+    PAL.forEach(function (c, i) { var b = document.createElement('button'); b.className = 'c'; b.style.background = c; b.setAttribute('data-v', i); b.title = 'цвет ' + (i + 1); sw.appendChild(b); });
+  })();
+  function syncUI() {
+    setSeg('segMode', S.mode); setSeg('segHour', S.h12 ? 1 : 0);
+    Array.prototype.forEach.call(sw.querySelectorAll('button'), function (b) { b.classList.toggle('on', b.getAttribute('data-v') === String(S.color)); });
+    $('bAod').classList.toggle('on', S.aod); $('bGrid').classList.toggle('on', S.grid);
+    $('grid').setAttribute('display', S.grid ? 'inline' : 'none');
+    if (!S.grid) $('grid').innerHTML = '';
+    $('bFull').classList.toggle('on', !!document.fullscreenElement);
+  }
+  function apply(structural) { save(); syncUI(); if (structural) { restart(); } else { lastSig = ''; stop(); frame(); } }
+  function nextColor() { S.color = S.color === 'dynamic' ? 0 : (S.color >= 8 ? 'dynamic' : S.color + 1); apply(false); }
+  function toggleFull() {
+    try { if (document.fullscreenElement) document.exitFullscreen(); else (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement); } catch (e) {}
+  }
+  $('segMode').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S.mode = b.getAttribute('data-v'); apply(true); });
+  $('segHour').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; S.h12 = b.getAttribute('data-v') === '1'; apply(false); });
+  sw.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var v = b.getAttribute('data-v'); S.color = v === 'dynamic' ? 'dynamic' : +v; apply(false); });
+  $('bAod').addEventListener('click', function () { S.aod = !S.aod; apply(false); });
+  $('bGrid').addEventListener('click', function () { S.grid = !S.grid; apply(false); });
+  $('bFull').addEventListener('click', toggleFull);
+  $('bHelp').addEventListener('click', function () { $('help').classList.toggle('show'); });
+  $('help').addEventListener('click', function () { $('help').classList.remove('show'); });
+  document.addEventListener('fullscreenchange', function () { syncUI(); restart(); });
+  window.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'f' || k === 'F' || k === 'а' || k === 'А') toggleFull();
+    else if (k === 'm' || k === 'M' || k === 'ь' || k === 'Ь') { S.mode = S.mode === 'fill' ? 'watch' : 'fill'; apply(true); }
+    else if (k === 'a' || k === 'A' || k === 'ф' || k === 'Ф') { S.aod = !S.aod; apply(false); }
+    else if (k === 'c' || k === 'C' || k === 'с' || k === 'С') nextColor();
+    else if (k === 'h' || k === 'H' || k === 'р' || k === 'Р') { S.h12 = !S.h12; apply(false); }
+    else if (k === 'g' || k === 'G' || k === 'п' || k === 'П') { S.grid = !S.grid; apply(false); }
+    else if (k === '?' || k === '/') $('help').classList.toggle('show');
+    else if (k === 'Escape') $('help').classList.remove('show');
+  });
+  var idleT = 0;
+  function wakeUI() { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(function () { if (!$('help').classList.contains('show')) document.body.classList.add('idle'); }, 2000); }
+  window.addEventListener('mousemove', wakeUI); window.addEventListener('mousedown', wakeUI); window.addEventListener('touchstart', wakeUI, { passive: true });
+  wakeUI();
+
+  /* ---------- отладочный доступ для verify.html / скриншотов ---------- */
+  function glyphsAt(ms) {                          // d-строки глифов для момента времени (проверки на NaN)
+    var sc = scene(ms), out = [];
+    sc.items.forEach(function (it) {
+      if (it.b[2] < 0.6 || it.b[3] < 0.6 || it.o <= 0.01) return;
+      var mb = mapBox(it.b, it.d);
+      out.push(FluxGlyph.glyphPath(it.d, mb[0], mb[1], mb[2], mb[3], T, mergeP(it.p), G.uy, G.uy, G.gx, G.gy));
+    });
+    return out;
+  }
+  window.FluxFace = { glyphs: glyphsAt, layoutView: layoutView, scene: scene, render: function (ms) { layoutView(); return render(ms); }, settings: S, geometry: function () { return G; }, nowMs: nowMs };
+
+  syncUI(); layoutView(); frame(); requestWake();
+})();
+</script>
+</body>
+</html>
